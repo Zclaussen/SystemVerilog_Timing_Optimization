@@ -33,6 +33,7 @@ module bit_diff
    logic [$clog2(WIDTH)-1:0]                    count_r;
    logic signed [$clog2(2*WIDTH+1)-1:0]         diff_r;
    logic                                        done_r;
+   logic                                        update;
    
    assign result = result_r;
    assign done = done_r;
@@ -62,10 +63,20 @@ module bit_diff
 
            COMPUTE : begin
               logic [$bits(diff_r)-1:0] next_diff;
-              next_diff = data_r[0] == 1'b1 ? diff_r + 1'b1 : diff_r - 1'b1;
+              // Optimization 1: Use mux/adder instead of adder/subtractor below
+              // next_diff = data_r[0] == 1'b1 ? diff_r + 1'b1 : diff_r - 1'b1;
               diff_r <= next_diff;            
               data_r <= data_r >> 1;
               count_r <= count_r + 1'b1;
+
+              // Implementation of Optimization 1
+              case ({data_r[0] == 1'b1, data_r[0] != 1'b1})
+                 2'b10 : update = WIDTH'(1);
+                 2'b01 : update = '1; // Equal to -1
+                 default : update = '0;
+              endcase
+
+              next_diff = diff_r + update;
 
               if (count_r == WIDTH-1) begin
                  result_r <= next_diff;
@@ -227,21 +238,14 @@ module timing_example
    
    logic [OUTPUT_WIDTH-1:0] pipe_in_r[NUM_PIPELINES], mult_out[NUM_PIPELINES], add_l0[8], add_l1[4], add_l2[2];  
    
-   always_ff @(posedge clk or posedge rst) begin
-      if (rst) begin
-         for (int i=0; i < NUM_PIPELINES; i++) begin
-            pipe_in_r[i] <= '0;
-            mult_out[i] <= '0;
-         end
-      end
-      else begin                  
-         for (int i=0; i < NUM_PIPELINES; i++) begin
-            // Register all the pipeline inputs. You can assume these inputs 
-            // never change in the middle of execution.
-            pipe_in_r[i] <= pipe_in[i];     
-            mult_out[i] <= fifo_rd_data * pipe_in_r[i];
-         end         
-      end
+   // Optimization 2: removal of rst functionality from pipeline
+   always_ff @(posedge clk) begin                 
+      for (int i=0; i < NUM_PIPELINES; i++) begin
+         // Register all the pipeline inputs. You can assume these inputs 
+         // never change in the middle of execution.
+         pipe_in_r[i] <= pipe_in[i];     
+         mult_out[i] <= fifo_rd_data * pipe_in_r[i];
+      end         
    end
 
    // Adder tree that sums all the multiplier outputs
