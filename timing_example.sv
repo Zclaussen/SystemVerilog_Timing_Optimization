@@ -51,11 +51,12 @@ module bit_diff
       else begin         
          case (state_r)
            START : begin   
+            // Optimization 3: Move unnecessary assignments outside of transition
+            count_r <= '0;
+            result_r <= '0;
+            diff_r <= '0;
               if (go == 1'b1) begin 
                  done_r <= 1'b0;
-                 result_r <= '0;                 
-                 diff_r <= '0;
-                 count_r <= '0;
                  data_r <= data;
                  state_r <= COMPUTE;
               end
@@ -247,6 +248,17 @@ module timing_example
          mult_out[i] <= fifo_rd_data * pipe_in_r[i];
       end         
    end
+
+   // Optimization 4: multicycle path
+   //set_multicycle_path -from {mult_out*} -to {add_l0*} -setup 4;
+   //set_multicycle_path -from {add_l0*} -to {add_l1*} -setup 4;
+   //set_multicycle_path -from {add_l1*} -to {add_l2*} -setup 4;
+   //set_multicycle_path -from {add_l2*} -to {data_out} -setup 4;
+   
+   //set_multicycle_path -from {mult_out*} -to {add_l0*} -hold 3;
+   //set_multicycle_path -from {add_l0*} -to {add_l1*} -hold 3;
+   //set_multicycle_path -from {add_l1*} -to {add_l2*} -hold 3;
+   //set_multicycle_path -from {add_l2*} -to {data_out} -hold 3;
 
    // Adder tree that sums all the multiplier outputs
    always_comb begin
